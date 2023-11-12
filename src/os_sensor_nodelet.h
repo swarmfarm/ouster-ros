@@ -69,15 +69,13 @@ class OusterSensor : public OusterSensorNodeletBase {
     std::shared_ptr<sensor::client> create_sensor_client(
         const std::string& hostname, const sensor::sensor_config& config);
 
-    sensor::sensor_config parse_config_from_ros_parameters(bool& retry_configuration);
+    sensor::sensor_config parse_config_from_ros_parameters();
 
     sensor::sensor_config parse_config_from_staged_config_string();
 
-    uint8_t compose_config_flags(const sensor::sensor_config& config);
+    uint8_t compose_config_flags();
 
-    bool configure_sensor(const std::string& hostname,
-                          sensor::sensor_config& config,
-                          const bool retry_configuration);
+    bool configure_sensor(const std::string& hostname, bool retry);
 
     std::string load_config_file(const std::string& config_file);
 
@@ -118,6 +116,7 @@ class OusterSensor : public OusterSensorNodeletBase {
     std::string mtp_dest;
     bool mtp_main;
     bool had_reconnection_success = false;
+    bool retry_configuration = false;
     sensor::sensor_config config;
     std::shared_ptr<sensor::client> sensor_client;
     PacketMsg lidar_packet;

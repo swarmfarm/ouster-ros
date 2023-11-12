@@ -40,10 +40,11 @@ void OusterSensor::halt() {
 }
 
 void OusterSensor::onInit() {
-    bool retry_configuration = false;
     sensor_hostname = get_sensor_hostname();
-    config = parse_config_from_ros_parameters(retry_configuration);
-    configure_sensor(sensor_hostname, config, retry_configuration);
+    config = staged_config.empty()
+                      ? parse_config_from_ros_parameters()
+                      : parse_config_from_staged_config_string();
+    configure_sensor(sensor_hostname, retry_configuration);
     sensor_client = create_sensor_client(sensor_hostname, config);
     if (!sensor_client) {
         auto error_msg = "Failed to initialize client";
@@ -223,7 +224,7 @@ std::shared_ptr<sensor::client> OusterSensor::create_sensor_client(
     return cli;
 }
 
-sensor::sensor_config OusterSensor::parse_config_from_ros_parameters(bool& retry_configuration) {
+sensor::sensor_config OusterSensor::parse_config_from_ros_parameters() {
     auto& nh = getPrivateNodeHandle();
     auto udp_dest = nh.param("udp_dest", std::string{});
     auto mtp_dest_arg = nh.param("mtp_dest", std::string{});
@@ -233,8 +234,6 @@ sensor::sensor_config OusterSensor::parse_config_from_ros_parameters(bool& retry
     auto lidar_mode_arg = nh.param("lidar_mode", std::string{});
     auto timestamp_mode_arg = nh.param("timestamp_mode", std::string{});
     auto udp_profile_lidar_arg = nh.param("udp_profile_lidar", std::string{});
-
-    retry_configuration = nh.param("retry_configuration", false);
 
     if (lidar_port < 0 || lidar_port > 65535) {
         auto error_msg =
@@ -327,6 +326,8 @@ sensor::sensor_config OusterSensor::parse_config_from_ros_parameters(bool& retry
         }
     }
 
+    retry_configuration = nh.param("retry_configuration", false);
+
     return config;
 }
 
@@ -336,8 +337,7 @@ sensor::sensor_config OusterSensor::parse_config_from_staged_config_string() {
     return config;
 }
 
-uint8_t OusterSensor::compose_config_flags(
-    const sensor::sensor_config& config) {
+uint8_t OusterSensor::compose_config_flags() {
     uint8_t config_flags = 0;
     if (config.udp_dest) {
         NODELET_INFO_STREAM("Will send UDP data to "
@@ -367,42 +367,40 @@ uint8_t OusterSensor::compose_config_flags(
     return config_flags;
 }
 
-bool OusterSensor::configure_sensor(const std::string& hostname,
-                                    sensor::sensor_config& config,
-                                    const bool retry_configuration) {
+bool OusterSensor::configure_sensor(const std::string& hostname, bool retry) {
+
     bool is_configured = false;
-    bool is_first_attempt = true;
+
     do {
-        // Throttling
-        if (!is_first_attempt) {
-            ros::Duration(0.01).sleep();
-            if (config.udp_dest &&
-                sensor::in_multicast(config.udp_dest.value()) &&
-                !mtp_main) {
-                if (!get_config(hostname, config, true)) {
+        if (config.udp_dest && sensor::in_multicast(config.udp_dest.value()) && !mtp_main) {
+            if (!get_config(hostname, config, true)) {
+                NODELET_ERROR("Error getting active config");
+            } else {
+                NODELET_INFO("Retrieved active config of sensor");
+            }
+        } else {
+            try {
+                uint8_t config_flags = compose_config_flags();
+                if (!set_config(hostname, config, config_flags)) {
                     NODELET_ERROR("Error getting active config");
                 } else {
-                    NODELET_INFO("Retrieved active config of sensor");
+                    is_configured = true;
                 }
-            } else {
-                try {
-                    uint8_t config_flags = compose_config_flags(config);
-                    if (!set_config(hostname, config, config_flags)) {
-                        NODELET_ERROR("Error connecting to sensor: '%s'", hostname.c_str());
-                    } else {
-                        is_configured = true;
-                    }
-                } catch (const std::exception& e) {
-                    NODELET_ERROR("Error setting config:  %s", e.what());
-                }
+            } catch (const std::exception& e) {
+                 NODELET_ERROR("Error setting config: %s", e.what());
             }
-        }
-        is_first_attempt = false;
-    } while (!is_configured && retry_configuration);
 
-    NODELET_INFO_STREAM("Sensor " << hostname
-                                  << " was "
-                                  << (is_configured ? "" : "not ") << "configured successfully");
+        }
+        // Throttling
+        if (!is_configured) {
+            ros::Duration(0.005).sleep();
+        }
+    } while (!is_configured && retry);
+
+    if (is_configured)
+        NODELET_INFO_STREAM("Sensor " << hostname  << " configured successfully");
+    else
+        NODELET_INFO_STREAM("Sensor " << hostname  << " failed to configure");
 
     return is_configured;
 }
@@ -554,11 +552,11 @@ void OusterSensor::connection_loop(sensor::client& cli,
     if (state & sensor::LIDAR_DATA) {
         handle_lidar_packet(cli, pf);
     }
-    else if (!had_reconnection_success &&
+    else if (!had_reconnection_success && retry_configuration &&
              (first_lidar_data_rx != ros::Time(0.0)) &&
              (ros::Time::now().toSec() - first_lidar_data_rx.toSec()) > TIMEOUT) {
         NODELET_ERROR("poll_client: attempting reconnection");
-        had_reconnection_success = configure_sensor(sensor_hostname, config, false);
+        had_reconnection_success = configure_sensor(sensor_hostname, false);
 
         if (had_reconnection_success) {
             sensor_client = create_sensor_client(sensor_hostname, config);
