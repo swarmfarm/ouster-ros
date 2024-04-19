@@ -580,9 +580,17 @@ void OusterSensor::start_sensor_connection_thread() {
 
 void OusterSensor::stop_sensor_connection_thread() {
     NODELET_DEBUG("sensor_connection_thread stopping.");
-    if (sensor_connection_thread->joinable()) {
+    if (sensor_connection_thread && sensor_connection_thread->joinable()) {
         sensor_connection_active = false;
-        sensor_connection_thread->join();
+
+        try
+        {
+            sensor_connection_thread->join();
+        }
+        catch (const std::system_error& ex)
+        {
+            NODELET_WARN("Error encountered while joining sensor connection processing thread - %s", ex.what());
+        }
     }
 }
 
@@ -612,14 +620,31 @@ void OusterSensor::start_packet_processing_threads() {
 void OusterSensor::stop_packet_processing_threads() {
     NODELET_DEBUG("stopping packet processing threads.");
 
-    if (imu_packets_processing_thread->joinable()) {
+    if (imu_packets_processing_thread && imu_packets_processing_thread->joinable()) {
         imu_packets_processing_thread_active = false;
-        imu_packets_processing_thread->join();
+
+        try
+        {
+            imu_packets_processing_thread->join();
+        }
+        catch (const std::system_error& ex)
+        {
+            NODELET_WARN("Error encountered while joining IMU packets processing thread - %s", ex.what());
+        }
+
     }
 
-    if (lidar_packets_processing_thread->joinable()) {
+    if (lidar_packets_processing_thread && lidar_packets_processing_thread->joinable()) {
         lidar_packets_processing_thread_active = false;
-        lidar_packets_processing_thread->join();
+
+        try
+        {
+            lidar_packets_processing_thread->join();
+        }
+        catch (const std::system_error& ex)
+        {
+            NODELET_WARN("Error encountered while joining lidar packets processing thread - %s", ex.what());
+        }
     }
 }
 
