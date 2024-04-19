@@ -34,7 +34,7 @@
 
   <group ns="$(arg ouster_ns)">
     <node pkg="nodelet" type="nodelet" name="os_cloud_node"
-      output="screen" required="true"
+      output="screen" required="false" respawn="true"
       args="load ouster_ros/OusterCloud os_nodelet_mgr $(arg _no_bond)">
       <param name="~/tf_prefix" type="str" value="$(arg tf_prefix)"/>
       <param name="~/sensor_frame" value="$(arg sensor_frame)"/>
@@ -54,7 +54,7 @@
 
   <group ns="$(arg ouster_ns)">
     <node pkg="nodelet" type="nodelet" name="img_node"
-      output="screen" required="true"
+      output="screen" required="false" respawn="true"
       args="load ouster_ros/OusterImage os_nodelet_mgr $(arg _no_bond)">
     </node>
   </group>
