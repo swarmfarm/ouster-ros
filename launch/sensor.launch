@@ -66,12 +66,12 @@
 
   <group ns="$(arg ouster_ns)">
     <node pkg="nodelet" type="nodelet" name="os_nodelet_mgr"
-      output="screen" required="true" args="manager"/>
+      output="screen" required="false" respawn="true" args="manager"/>
   </group>
 
   <group ns="$(arg ouster_ns)">
     <node pkg="nodelet" type="nodelet" name="os_node"
-      output="screen" required="true"
+      output="screen" required="false" respawn="true"
       args="load ouster_ros/OusterSensor os_nodelet_mgr $(arg _no_bond)">
       <param name="~/sensor_hostname" type="str" value="$(arg sensor_hostname)"/>
       <param name="~/udp_dest" type="str" value="$(arg udp_dest)"/>
